@@ -6,6 +6,16 @@
 <title>DMC Event — Plateforme Immersive</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&family=Great+Vibes&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: "7eb7e10b-83b1-4da7-b754-c73ff7972979",
+      notifyButton: { enable: false },
+    });
+  });
+</script>
 <style>
 :root{
   --black:#080808;--dark:#0f0f0f;--dark2:#161616;
