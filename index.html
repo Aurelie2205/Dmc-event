@@ -1215,8 +1215,7 @@ async function deleteParticipant(id){
 // COUNTDOWN
 let countdownInterval = null;
 
-async function loadCountdown(){
-  if(typeof sb === 'undefined' || !sb) return;
+async function loadCountdown(){if(typeof sb === 'undefined' || !sb) return;
   const {data} = await sb.from('event_settings').select('*').eq('id',1).single();
   if(!data||!data.event_date) return;
   const eventDate = new Date(data.event_date);
