@@ -927,4 +927,120 @@ async function loadPartFeed(){
 
 function renderPartFeed(posts){
   const feed=document.getElementById('part-feed');
-  if(!posts.length){feed.innerHTML=emptyHtml('◆','Rien encore ici','Les animateurs n\'ont pas en
+  if(!posts.length){feed.innerHTML=emptyHtml('◆','Rien encore ici','Les animateurs n\'ont pas encore ici','Les animateurs n\'ont pas encore publié.');return;}
+  feed.innerHTML=posts.map((p,i)=>{
+    let media='';
+    if(p.type==='video'){media=p.embed_url?`<div class="pp-video"><iframe src="${esc(p.embed_url)}" allowfullscreen></iframe></div>`:`<div class="pp-video"><div class="vph" onclick="window.open('${esc(p.video_url||'')}','_blank')"><div class="play-ring">▶</div></div></div>`;}
+    else if(p.type==='image'&&p.image_url){media=`<div class="pp-img"><img src="${esc(p.image_url)}" alt="" onerror="this.parentElement.style.display='none'"></div>`;}
+    const replies=(p.post_replies||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+    const myInit=(currentUser.name||'?').slice(0,2).toUpperCase();
+    return`<div class="pp-card" style="animation-delay:${i*.06}s">
+      <div class="pp-top">
+        <div class="pp-type">${p.type==='text'?'Texte':p.type==='video'?'Vidéo':'Image'}</div>
+        <div class="pp-title">${esc(p.title)}</div>
+        <div class="pp-author">${avatarHtml(p.animator_name,p.animator_avatar,'pp-av-sm')}<div class="pp-auth-name">${esc(p.animator_name)}</div><div class="pp-auth-time">· ${fmtTime(p.created_at)}</div></div>
+      </div>
+      ${media}
+      ${p.content?`<div class="pp-content">${esc(p.content)}</div>`:''}
+      <div class="pp-replies">
+        ${replies.length?`<div class="ex-replies">${replies.map(r=>`<div class="p-r-row"><div class="p-r-av${r.is_animator?' anim-av':''}">${(r.author_name||'?').slice(0,2).toUpperCase()}</div><div><div class="p-r-name${r.is_animator?' anim-name':''}">${esc(r.author_name)}${r.is_animator?' ✦':''}</div><div class="p-r-txt">${esc(r.content)}</div></div></div>`).join('')}</div>`:''}
+        <div class="r-input-row">
+          <div class="p-r-av" style="align-self:flex-end;margin-bottom:2px;">${myInit}</div>
+          <textarea id="reply-${p.id}" placeholder="Répondre…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){submitReply('${p.id}');event.preventDefault();}"></textarea>
+          <button class="btn-send" onclick="submitReply('${p.id}')">Envoyer</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function submitReply(postId){
+  const ta=document.getElementById('reply-'+postId);
+  const txt=ta?ta.value.trim():'';if(!txt)return;
+  await sb.from('post_replies').insert({post_id:postId,author_id:currentUser.id,author_name:currentUser.name,author_avatar:currentUser.avatar||'',is_animator:false,content:txt});
+  ta.value='';toast('Réponse envoyée ✦');
+}
+
+async function loadParticipantsList(){
+  const {data}=await sb.from('participants').select('display_name,email,ambassador_name,created_at').order('created_at',{ascending:false});
+  const wrap=document.getElementById('parts-table-wrap');
+  document.getElementById('parts-count-lbl').textContent=data?'('+data.length+')':'';
+  if(!data||!data.length){wrap.innerHTML=emptyHtml('👥','Aucun participant','Personne n\'est encore inscrit.');return;}
+  wrap.innerHTML=`<div style="overflow-x:auto;"><table class="parts-table"><thead><tr><th>Pseudo</th><th>Email</th><th>Ambassadeur</th><th>Inscrit le</th></tr></thead><tbody>${data.map(p=>`<tr><td>${esc(p.display_name||'—')}</td><td>${esc(p.email||'—')}</td><td>${esc(p.ambassador_name||'—')}</td><td>${fmtTime(p.created_at)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function subscribeRealtime(){
+  if(chatSub)try{sb.removeChannel(chatSub);}catch(e){}
+  if(postsSub)try{sb.removeChannel(postsSub);}catch(e){}
+  if(repliesSub)try{sb.removeChannel(repliesSub);}catch(e){}
+  if(privSub)try{sb.removeChannel(privSub);}catch(e){}
+  chatSub=sb.channel('chat-'+Date.now()).on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},()=>{loadGroupChat();if(!chatPanelOpen&&!currentUser.isAnimator){const btn=document.getElementById('chat-bubble-notif');if(btn){btn.style.display='flex';btn.textContent='!';}}}).subscribe();
+  postsSub=sb.channel('posts-'+Date.now()).on('postgres_changes',{event:'*',schema:'public',table:'posts'},payload=>{if(currentUser.isAnimator)loadAnimFeed();else{loadPartFeed();if(payload.eventType==='INSERT'){sendNotif('DMC Event ✦','Nouveau contenu : '+payload.new.title);}}}).subscribe();
+  repliesSub=sb.channel('replies-'+Date.now()).on('postgres_changes',{event:'INSERT',schema:'public',table:'post_replies'},()=>{if(currentUser.isAnimator)loadAnimFeed();else loadPartFeed();}).subscribe();
+  privSub=sb.channel('priv-'+Date.now()).on('postgres_changes',{event:'INSERT',schema:'public',table:'private_messages'},payload=>{const msg=payload.new;if(msg.receiver_id===currentUser.id){if(currentUser.isAnimator){const n=document.getElementById('priv-notif');if(n)n.style.display='block';loadAnimPrivList();if(currentPrivThread&&currentPrivThread.id===msg.sender_id)loadPrivThread('anim');}else{if(currentPrivThread&&currentPrivThread.id===msg.sender_id)loadPrivThread('part');}}}).subscribe();
+}
+
+function previewAvatar(){const url=document.getElementById('profile-avatar-url').value.trim();const prev=document.getElementById('profile-av-preview');if(url){prev.innerHTML=`<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;}else{prev.textContent=(currentUser?.name||'A').slice(0,2).toUpperCase();}}
+
+async function saveProfile(){
+  const name=document.getElementById('profile-display-name').value.trim();
+  const av=document.getElementById('profile-avatar-url').value.trim();
+  const pw=document.getElementById('profile-new-pw').value;
+  if(!name){toast('Nom vide.',true);return;}
+  const upd={display_name:name,avatar_url:av};if(pw)upd.password=pw;
+  const {error}=await sb.from('animators').update(upd).eq('id',currentUser.id);
+  if(error){toast('Erreur.',true);return;}
+  currentUser.name=name;currentUser.avatar=av;saveSession();
+  const navAv=document.getElementById('anim-nav-av');
+  if(av){navAv.innerHTML=`<img src="${esc(av)}" alt="">`;}else{navAv.textContent=name.slice(0,2).toUpperCase();}
+  document.getElementById('anim-nav-badge').textContent='✦ '+name;
+  toast('Profil sauvegardé ✦');
+}
+
+async function loadAnimatorsList(){
+  const {data}=await sb.from('animators').select('*').order('created_at');
+  const list=document.getElementById('animators-list');
+  document.getElementById('anim-count-label').textContent=data?'('+data.length+'/5)':'';
+  if(!data||!data.length){list.innerHTML=emptyHtml('◆','Aucun animateur','');return;}
+  list.innerHTML=data.map(a=>`<div class="manager-card"><div class="mc-top">${avatarHtml(a.display_name,a.avatar_url||'','mc-av')}<div class="mc-info"><div class="mc-name">${esc(a.display_name)}</div><div class="mc-user">@${esc(a.username)}</div></div>${a.is_super_admin?'<span class="mc-badge">Super Admin</span>':''}${!a.is_super_admin?`<button class="btn-icon danger" onclick="deleteAnimator('${a.id}')">✕</button>`:''}</div></div>`).join('');
+}
+
+async function createAnimator(){
+  const username=document.getElementById('new-anim-user').value.trim();
+  const pw=document.getElementById('new-anim-pw').value;
+  const name=document.getElementById('new-anim-name').value.trim();
+  if(!username||!pw||!name){toast('Remplissez tous les champs.',true);return;}
+  const {data:cnt}=await sb.from('animators').select('id');
+  if(cnt&&cnt.length>=5){toast('Maximum 5 animateurs.',true);return;}
+  const {data:ex}=await sb.from('animators').select('id').eq('username',username);
+  if(ex&&ex.length>0){toast('Identifiant déjà pris.',true);return;}
+  const {error}=await sb.from('animators').insert({username,password:pw,display_name:name});
+  if(error){toast('Erreur.',true);return;}
+  ['new-anim-user','new-anim-pw','new-anim-name'].forEach(id=>document.getElementById(id).value='');
+  toast('Animateur créé ✦');loadAnimatorsList();
+}
+
+async function deleteAnimator(id){if(!confirm('Supprimer ?'))return;await sb.from('animators').delete().eq('id',id);toast('Supprimé.');loadAnimatorsList();}
+
+function showResetConfirm(){document.getElementById('reset-confirm-box').style.display='block';document.getElementById('reset-trigger-btn').style.display='none';}
+function cancelReset(){document.getElementById('reset-confirm-box').style.display='none';document.getElementById('reset-trigger-btn').style.display='block';document.getElementById('reset-confirm-input').value='';}
+async function confirmReset(){
+  if(document.getElementById('reset-confirm-input').value.trim()!=='RESET'){toast('Tapez RESET.',true);return;}
+  toast('Réinitialisation…');
+  await sb.from('chat_messages').delete().neq('id','00000000-0000-0000-0000-000000000000');
+  await sb.from('private_messages').delete().neq('id','00000000-0000-0000-0000-000000000000');
+  await sb.from('post_replies').delete().neq('id','00000000-0000-0000-0000-000000000000');
+  await sb.from('posts').delete().neq('id','00000000-0000-0000-0000-000000000000');
+  await sb.from('participants').delete().neq('id','00000000-0000-0000-0000-000000000000');
+  cancelReset();toast('✦ Réinitialisé !');loadAnimFeed();
+}
+
+function emptyHtml(icon,title,sub){return`<div class="empty"><div class="e-gem">${icon}</div><div class="e-title">${title}</div><div class="e-sub">${sub}</div></div>`;}
+
+window.addEventListener('load',()=>{
+  const session=loadSession();
+  if(session){currentUser=session;if(session.isAnimator)enterAnimateur();else enterParticipant();}
+});
+</script>
+</body>
+</html>
