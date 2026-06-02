@@ -656,6 +656,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 function showModal(id){document.getElementById(id).classList.add('open');}
 function getEmbed(url){try{const u=new URL(url);if(u.hostname.includes('youtube.com')){const id=u.searchParams.get('v');if(id)return'https://www.youtube.com/embed/'+id;}if(u.hostname==='youtu.be'){const id=u.pathname.slice(1);if(id)return'https://www.youtube.com/embed/'+id;}if(u.hostname.includes('vimeo.com')){const id=u.pathname.match(/(\d+)/)?.[1];if(id)return'https://player.vimeo.com/video/'+id;}}catch(e){}return null;}
 function fmtTime(ts){return new Date(ts).toLocaleString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});}
+function emptyHtml(gem,title,sub){return`<div class="empty"><div class="e-gem">${gem}</div><div class="e-title">${title}</div><div class="e-sub">${sub}</div></div>`;}
 function avatarHtml(name,url,cls){const i=(name||'?').slice(0,2).toUpperCase();if(url)return`<div class="${cls}"><img src="${esc(url)}" alt="" onerror="this.parentElement.innerHTML='${i}'"></div>`;return`<div class="${cls}">${i}</div>`;}
 function saveSession(){localStorage.setItem('dmc_session',JSON.stringify(currentUser));}
 function loadSession(){try{const s=localStorage.getItem('dmc_session');if(s)return JSON.parse(s);}catch(e){}return null;}
