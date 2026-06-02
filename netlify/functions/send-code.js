@@ -1,33 +1,36 @@
-const { Resend } = require('resend');
-
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  const { email, code } = JSON.parse(event.body);
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  const { email } = JSON.parse(event.body);
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  const SB_URL = process.env.SB_URL;
+  const SB_KEY = process.env.SB_SERVICE_KEY;
+  
+  await fetch(`${SB_URL}/rest/v1/verification_codes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SB_KEY,
+      'Authorization': `Bearer ${SB_KEY}`
+    },
+    body: JSON.stringify({ email, code })
+  });
 
-  try {
-    await resend.emails.send({
-      from: 'DMC Event <noreply@dmc-event-v2.netlify.app>',
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+    },
+    body: JSON.stringify({
+      from: 'onboarding@resend.dev',
       to: email,
-      subject: 'Votre code de vérification',
-      html: `<p>Votre code : <strong>${code}</strong></p>`
-    });
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true })
-    };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message })
-    };
-  }
-};
-
+      subject: 'DMC Event — Code de vérification',
+      html: `<p>Votre code DMC Event : <strong>${code}</strong></p><p>Ce code expire dans 10 minutes.</p>`
+    })
   });
 
   return {
