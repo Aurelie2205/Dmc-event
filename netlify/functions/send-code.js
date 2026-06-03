@@ -1,3 +1,4 @@
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
@@ -26,7 +27,7 @@ exports.handler = async (event) => {
       'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
     },
     body: JSON.stringify({
-      from: 'onboarding@resend.dev',
+      from: 'DMC Event <noreply@dmc-event.com>',
       to: email,
       subject: 'DMC Event — Code de vérification',
       html: `<p>Votre code DMC Event : <strong>${code}</strong></p><p>Ce code expire dans 10 minutes.</p>`
