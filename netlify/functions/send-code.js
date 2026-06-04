@@ -32,7 +32,7 @@ exports.handler = async (event) => {
       html: `
         <div style="font-family:'Raleway',Helvetica,sans-serif;max-width:560px;margin:0 auto;background:#0f0f0f;color:#f5f0e8;padding:40px 32px;border-radius:20px;">
           <div style="text-align:center;margin-bottom:32px;">
-            <img src="https://qcovftgwkughattbraba.supabase.co/storage/v1/object/public/images/43B03296-46C3-4AD3-8BCB-569B840CA035.PNG" alt="DMC Event" style="max-width:200px;width:100%;object-fit:contain;">
+            <img src="https://i.postimg.cc/rscrjFYd/43B03296-46C3-4AD3-8BCB-569B840CA035.png" alt="DMC Event" style="max-width:200px;width:100%;object-fit:contain;">
             <div style="width:60px;height:2px;background:linear-gradient(to right,transparent,#c8a050,transparent);margin:16px auto 0;border-radius:2px;"></div>
           </div>
 
