@@ -6,7 +6,7 @@ exports.handler = async (event) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Key os_v2_app_p236cc4dwfg2pn2uy477pfzjphdjs4mqzcyus55zmkrbx4tublnwgmi3jn23gsydgrorrjitly5cqcjity6xcyzi6liizqtb6zijfqy'
+      'Authorization': 'Key ufgv3mmcmevsfwhjqbjplt6ld'
     },
     body: JSON.stringify({
       app_id: '7eb7e10b-83b1-4da7-b754-c73ff7972979',
@@ -18,7 +18,5 @@ exports.handler = async (event) => {
   });
 
   const data = await response.json();
-  console.log('OneSignal response:', JSON.stringify(data));
-
   return { statusCode: 200, body: JSON.stringify({ success: true, onesignal: data }) };
 };
