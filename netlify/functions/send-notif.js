@@ -11,7 +11,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         app_id: '7eb7e10b-83b1-4da7-b754-c73ff7972979',
         target_channel: 'push',
-        included_segments: ['Total Subscriptions'],
+        included_segments: ['All'],
         headings: { en: title || 'DMC Event ✦' },
         contents: { en: message || 'Nouveau contenu disponible' },
         url: 'https://dmc-event-v2.netlify.app'
