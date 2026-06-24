@@ -2892,10 +2892,12 @@ async function sendChatImage(input,type,side){
       const thread=currentPrivThread||_ambPrivThread||_ambPrivThreadDesk;
       if(!thread)return;
       await sb.from('private_messages').insert({sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',receiver_id:thread.id,receiver_name:thread.name||'',receiver_avatar:thread.avatar||'',is_animator:currentUser.isAnimator||false,content:imgContent});
-      if(side==='amb-desk')loadAmbPrivThreadDesk();
-      else if(side==='amb')loadAmbPrivThread();
-      else if(side==='priv-desk')loadPrivThreadDesk();
-      else loadPrivThread(currentUser.isAnimator?'anim':'part');
+      // Append immédiat
+      const fakeImgMsg={sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',is_animator:currentUser.isAnimator||false,content:imgContent,created_at:new Date().toISOString(),id:'tmp-'+Date.now()};
+      if(side==='amb-desk')appendPrivMsg(fakeImgMsg,'amb-thread-msgs-desk',currentUser.id,thread.avatar||'');
+      else if(side==='amb')appendPrivMsg(fakeImgMsg,'amb-priv-thread-msgs',currentUser.id,thread.avatar||'');
+      else if(side==='priv-desk')appendPrivMsg(fakeImgMsg,'part-thread-msgs-desk',currentUser.id,thread.avatar||'');
+      else appendPrivMsg(fakeImgMsg,currentUser.isAnimator?'anim-thread-msgs':'part-thread-msgs',currentUser.id,thread.avatar||'');
       // Notifier le destinataire (même logique que sendPrivMsg)
       const recvId=thread.id;
       if(recvId!==currentUser.id){
@@ -3337,7 +3339,7 @@ async function loadAmbPrivThreadDesk(){
   if(!_ambPrivThreadDesk)return;
   const {data}=await sb.from('private_messages').select('*')
     .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${_ambPrivThreadDesk.id}),and(sender_id.eq.${_ambPrivThreadDesk.id},receiver_id.eq.${currentUser.id})`)
-    .order('created_at',{ascending:true});
+    .order('created_at',{ascending:true}).limit(100);
   const el=document.getElementById('amb-thread-msgs-desk');
   if(!el)return;
 
@@ -3374,7 +3376,7 @@ async function sendAmbPrivMsgDesk(){
   if(!txt)return;
   ta.value='';
   await sb.from('private_messages').insert({sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',is_animator:false,receiver_id:_ambPrivThreadDesk.id,receiver_name:_ambPrivThreadDesk.name||'',receiver_avatar:_ambPrivThreadDesk.avatar||'',content:txt});
-  loadAmbPrivThreadDesk();
+  appendPrivMsg({sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',is_animator:false,content:txt,created_at:new Date().toISOString(),id:'tmp-'+Date.now()},'amb-thread-msgs-desk',currentUser.id,_ambPrivThreadDesk.avatar||'');
   const recvId=_ambPrivThreadDesk.id;
   try{
     getAdminOsId(recvId).then(osId=>{
@@ -3441,7 +3443,7 @@ async function loadAmbPrivThread(){
   if(!_ambPrivThread||!currentUser)return;
   const {data}=await sb.from('private_messages').select('*')
     .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${_ambPrivThread.id}),and(sender_id.eq.${_ambPrivThread.id},receiver_id.eq.${currentUser.id})`)
-    .order('created_at',{ascending:true});
+    .order('created_at',{ascending:true}).limit(100);
   const el=document.getElementById('amb-priv-thread-msgs');
   if(!el)return;
   el.innerHTML='';
@@ -3915,8 +3917,10 @@ function subscribeRealtimeAmbassador(){
       }
     }
     if(threadOpen){
-      loadPrivThread('part');
-      loadAmbPrivThreadDesk();
+      const m=payload.new;
+      const contactAvatar=currentPrivThread?.avatar||'';
+      appendPrivMsg(m,'part-thread-msgs',currentUser.id,contactAvatar);
+      appendPrivMsg(m,'amb-thread-msgs-desk',currentUser.id,contactAvatar);
     }
   }).subscribe();
 
@@ -4278,6 +4282,7 @@ function appendGroupMsg(m){
   containers.forEach(id=>{
     const el=document.getElementById(id);
     if(!el)return;
+    const wasAtBottom=el.scrollHeight-el.scrollTop-el.clientHeight<80;
     const mine=m.author_id===currentUser?.id;
     const isA=m.is_animator;
     const init=(m.author_name||'?').slice(0,2).toUpperCase();
@@ -4288,7 +4293,7 @@ function appendGroupMsg(m){
     const bubble=renderChatContent(m.content||'');
     div.innerHTML=`${avH}<div class="cm-body"><div class="cm-name${isA?' anim-n':''}">${esc(m.author_name)}${isA?' ✦':''}</div><div class="cm-bubble-wrap" style="display:flex;align-items:flex-end;gap:4px;${mine?'flex-direction:row-reverse;':''}"><div class="cm-bubble${mine?' mine-b':''}${isA?' anim-b':''}" id="cm-bubble-${m.id}" oncontextmenu="showChatMenu(event,'${m.id}','group',${mine&&!m.is_animator},${mine&&!m.is_animator});return false;" ontouchstart="if(event.target.tagName!=='IMG')startLongPress(event,'${m.id}','group',${mine&&!m.is_animator},${mine&&!m.is_animator})" ontouchend="if(event.target.tagName!=='IMG')cancelLongPress()" ontouchmove="cancelLongPress()">${bubble}</div><button class="cm-react-btn" ontouchend="showMsgReactionPicker('${m.id}','group');event.preventDefault();event.stopPropagation();" onclick="showMsgReactionPicker('${m.id}','group');event.stopPropagation();">😊</button></div><div class="cm-reactions" data-mreact="${m.id}"></div><div class="cm-time">${fmtChatTime(m.created_at)}</div></div>`;
     el.appendChild(div);
-    scrollToBottom(el);
+    if(mine||wasAtBottom)scrollToBottom(el);
   });
 }
 
@@ -4809,6 +4814,30 @@ function buildMsgHtml(m,msgType='group'){
   </div>`;
 }
 
+// Ajouter un message privé instantanément sans recharger tout le thread
+function appendPrivMsg(m, containerId, myId, contactAvatar){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  // Éviter les doublons
+  if(document.getElementById('pmsg-'+m.id)||document.getElementById('pmsg-desk-'+m.id))return;
+  // Vérifier si l'utilisateur est déjà en bas AVANT d'ajouter le message
+  const wasAtBottom=el.scrollHeight-el.scrollTop-el.clientHeight<80;
+  const mine=m.sender_id===myId;
+  const init=(m.sender_name||'?').slice(0,2).toUpperCase();
+  const avatarUrl=mine?(window.currentUser?.avatar||''):contactAvatar;
+  const avContent=avatarUrl?`<img src="${avatarUrl}" alt="${init}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='${init}'">`:`${init}`;
+  const div=document.createElement('div');
+  div.className='chat-msg'+(mine?' mine':'');
+  div.id='pmsg-'+m.id;
+  const bubble=renderChatContent(m.content||'');
+  const isA=m.is_animator;
+  div.innerHTML=`<div class="cm-av${isA?' anim':''}">${avContent}</div><div class="cm-body"><div class="cm-name${isA?' anim-n':''}">${esc(m.sender_name||'')}</div><div class="cm-bubble-wrap" style="display:flex;align-items:flex-end;gap:4px;${mine?'flex-direction:row-reverse;':''}"><div class="cm-bubble${mine?' mine-b':''}${isA?' anim-b':''}">${bubble}</div><button class="cm-react-btn" ontouchend="showMsgReactionPicker('${m.id}','priv');event.preventDefault();event.stopPropagation();" onclick="showMsgReactionPicker('${m.id}','priv');event.stopPropagation();">😊</button></div><div class="cm-reactions" data-mreact="${m.id}"></div>${mine?`<div class="msg-vu" data-mvu="${m.id}"></div>`:''}<div class="cm-time">${fmtChatTime(m.created_at)}</div></div>`;
+  el.appendChild(div);
+  // Scroll uniquement si : message envoyé par moi OU déjà en bas
+  if(mine||wasAtBottom)scrollToBottom(el);
+  if(m.sender_id!==myId)trackMsgView(m.id,'priv');
+}
+
 function scrollToBottom(el){
   if(!el)return;
   // Double RAF + fallback 150ms pour attendre le rendu complet (images, etc.)
@@ -5122,8 +5151,12 @@ async function sendPrivMsg(side){
   const txt=(ta.value||ta.innerText||'').trim().replace(/\n$/,'');
   if(!txt)return;
   ta.value='';ta.innerText='';
+  const now=new Date().toISOString();
+  const fakeMsg={sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',is_animator:currentUser.isAnimator||false,receiver_id:currentPrivThread.id,content:txt,created_at:now,id:'tmp-'+Date.now()};
   await sb.from('private_messages').insert({sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',is_animator:currentUser.isAnimator||false,receiver_id:currentPrivThread.id,receiver_name:currentPrivThread.name||'',receiver_avatar:currentPrivThread.avatar||'',content:txt});
-  loadPrivThread(side);
+  // Append immédiat pour la fluidité — le realtime confirmera avec l'ID réel
+  const containerId=side==='anim'?'anim-thread-msgs':'part-thread-msgs';
+  appendPrivMsg(fakeMsg,containerId,currentUser.id,currentPrivThread.avatar||'');
   if(!currentUser.isAnimator){const notif=document.getElementById('priv-notif');if(notif)notif.style.display='block';}
 
   // Notifier le destinataire en push
@@ -5685,8 +5718,15 @@ function subscribeRealtime(){
       else loadPartPrivContacts();
     }
     if(threadOpen){
-      if(currentUser.isAnimator)loadPrivThread('anim');
-      else{loadPrivThread('part');loadPrivThreadDesk();}
+      const m=payload.new;
+      const myId=currentUser.id;
+      const contactAvatar=currentPrivThread?.avatar||'';
+      if(currentUser.isAnimator){
+        appendPrivMsg(m,'anim-thread-msgs',myId,contactAvatar);
+      } else {
+        appendPrivMsg(m,'part-thread-msgs',myId,contactAvatar);
+        appendPrivMsg(m,'part-thread-msgs-desk',myId,contactAvatar);
+      }
     }
   }).subscribe();
 }
@@ -6054,8 +6094,9 @@ async function sendPrivMsgDesk(){
   const txt=(ta.value||ta.innerText||'').trim().replace(/\n$/,'');
   if(!txt)return;
   ta.value='';ta.innerText='';
+  const fakeMsg2={sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',is_animator:false,receiver_id:currentPrivThread.id,content:txt,created_at:new Date().toISOString(),id:'tmp-'+Date.now()};
   await sb.from('private_messages').insert({sender_id:currentUser.id,sender_name:currentUser.name,sender_avatar:currentUser.avatar||'',is_animator:false,receiver_id:currentPrivThread.id,receiver_name:currentPrivThread.name||'',receiver_avatar:currentPrivThread.avatar||'',content:txt});
-  loadPrivThreadDesk();
+  appendPrivMsg(fakeMsg2,'part-thread-msgs-desk',currentUser.id,currentPrivThread.avatar||'');
   // Push notification au destinataire
   const recvId=currentPrivThread.id;
   if(recvId!==currentUser.id){
