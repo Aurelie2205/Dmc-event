@@ -1,3 +1,6 @@
+exports.config = {
+  schedule: "*/1 * * * *"
+};
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(
   process.env.SB_URL,
@@ -35,7 +38,8 @@ exports.handler = async () => {
           content: post.content,
           author_id: post.author_id,
           author_name: post.author_name,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          published_by: post.author_name
         });
       if (publishError) {
         console.error('Erreur publication :', publishError);
@@ -47,7 +51,9 @@ exports.handler = async () => {
           published: true
         })
         .eq('id', post.id);
-      console.log(`Publication automatique effectuée : ${post.title}`);
+      console.log(
+        `Publication automatique effectuée : ${post.title}`
+      );
     }
     return {
       statusCode: 200,
@@ -57,7 +63,10 @@ exports.handler = async () => {
       })
     };
   } catch (err) {
-    console.error('Erreur fonction publish-scheduled :', err);
+    console.error(
+      'Erreur fonction publish-scheduled :',
+      err
+    );
     return {
       statusCode: 500,
       body: JSON.stringify({
