@@ -4266,6 +4266,21 @@ function copyAmbSponsorLink(){
   if(!input)return;
   navigator.clipboard.writeText(input.value).then(()=>toast('Lien copié ✦'));
 }
+
+let _partFeedRealtimeRefreshTimer=null;
+function schedulePartFeedSoftRefresh(){
+  if(!currentUser || currentUser.isAnimator || currentUser.isAmbassador)return;
+  if(_partFeedRealtimeRefreshTimer)return;
+  _partFeedRealtimeRefreshTimer=setTimeout(async()=>{
+    _partFeedRealtimeRefreshTimer=null;
+    try{
+      await loadPartFeed();
+    }catch(e){
+      console.warn('[feed participant] refresh doux échoué', e);
+    }
+  }, 600);
+}
+
 function subscribeRealtimeAmbassador(){
   // Détruire les canaux existants pour éviter les doublons si appelé plusieurs fois
   try{sb.getChannels().forEach(ch=>sb.removeChannel(ch));}catch(e){}
