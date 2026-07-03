@@ -5206,6 +5206,31 @@ async function renderMsgVu(msgId, msgType){
   document.querySelectorAll(`[data-mvu="${msgId}"]`).forEach(el=>el.innerHTML=vuHtml);
 }
 
+// Version groupée pour le chargement initial d'un thread — une seule requête
+// pour tous les messages au lieu d'une par message, pour une ouverture rapide
+// même sur de longues conversations.
+async function renderMsgVuBatch(msgIds,msgType){
+  if(!msgIds||!msgIds.length)return;
+  try{
+    const {data}=await sb.from('message_views').select('*').in('message_id',msgIds);
+    if(!data||!data.length)return;
+    const byMsg={};
+    data.forEach(v=>{(byMsg[v.message_id]=byMsg[v.message_id]||[]).push(v);});
+    msgIds.forEach(msgId=>{
+      const views=byMsg[msgId]||[];
+      const adminViews=views.filter(v=>v.is_animator);
+      const otherViews=views.filter(v=>v.user_id!==currentUser.id);
+      let vuHtml='';
+      if(msgType==='group'&&adminViews.length&&!currentUser.isAnimator){
+        vuHtml=`<div class="msg-vu">✓ Vu par ${adminViews.map(v=>esc(v.user_name)).join(', ')}</div>`;
+      } else if(msgType==='priv'&&otherViews.length){
+        vuHtml=`<div class="msg-vu">✓ Vu</div>`;
+      }
+      if(vuHtml)document.querySelectorAll(`[data-mvu="${msgId}"]`).forEach(el=>el.innerHTML=vuHtml);
+    });
+  }catch(e){}
+}
+
 // FORMAT HEURE
 function fmtChatTime(ts){if(!ts)return'';const d=new Date(ts.includes('T')?ts:ts+'Z');if(isNaN(d))return'';const now=new Date();const diff=now-d;if(diff<60000)return'À l\'instant';if(diff<3600000)return Math.floor(diff/60000)+'min';if(diff<86400000)return d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});return d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});}
 
@@ -5239,6 +5264,24 @@ async function renderMsgReactions(msgId,msgType='group'){
   const {data}=await sb.from('message_reactions').select('*').eq('message_id',msgId);
   const html=(!data||!data.length)?'':Object.entries(data.reduce((a,r)=>{if(!a[r.emoji])a[r.emoji]=[];a[r.emoji].push(r.user_id);return a;},{})).map(([e,u])=>`<div class="cm-reaction${u.includes(currentUser.id)?' active':''}" ontouchstart="event.preventDefault();toggleMsgReaction('${msgId}','${msgType}','${e}')" onclick="toggleMsgReaction('${msgId}','${msgType}','${e}')">${e}<span>${u.length>1?u.length:''}</span></div>`).join('');
   document.querySelectorAll(`[data-mreact="${msgId}"]`).forEach(el=>el.innerHTML=html);
+}
+
+// Version groupée — une seule requête pour toutes les réactions du thread,
+// utilisée au chargement initial pour une ouverture rapide.
+async function renderMsgReactionsBatch(msgIds,msgType){
+  if(!msgIds||!msgIds.length)return;
+  try{
+    const {data}=await sb.from('message_reactions').select('*').in('message_id',msgIds);
+    if(!data||!data.length)return;
+    const byMsg={};
+    data.forEach(r=>{(byMsg[r.message_id]=byMsg[r.message_id]||[]).push(r);});
+    msgIds.forEach(msgId=>{
+      const reactions=byMsg[msgId];
+      if(!reactions||!reactions.length)return;
+      const html=Object.entries(reactions.reduce((a,r)=>{if(!a[r.emoji])a[r.emoji]=[];a[r.emoji].push(r.user_id);return a;},{})).map(([e,u])=>`<div class="cm-reaction${u.includes(currentUser.id)?' active':''}" ontouchstart="event.preventDefault();toggleMsgReaction('${msgId}','${msgType}','${e}')" onclick="toggleMsgReaction('${msgId}','${msgType}','${e}')">${e}<span>${u.length>1?u.length:''}</span></div>`).join('');
+      document.querySelectorAll(`[data-mreact="${msgId}"]`).forEach(el=>el.innerHTML=html);
+    });
+  }catch(e){}
 }
 
 // LONG PRESS pour mobile
@@ -6709,7 +6752,7 @@ async function loadAdminGroupThread(onDataReceived){
       </div>
     </div>`;
   }).join('');
-  await Promise.all(data.map(m=>renderMsgReactions(m.id,'priv')));
+  await renderMsgReactionsBatch(data.map(m=>m.id),'priv');
   revealThreadAtBottom(el);
 }
 
@@ -7028,14 +7071,15 @@ async function loadPrivThread(side,onDataReceived){
       </div>
     </div>`;
   }).join('');
-  // Attendre que réactions et indicateurs "vu" soient rendus AVANT de révéler —
-  // sinon leur apparition après coup change la hauteur des messages et décale
-  // visiblement le scroll (effet observé : ouverture 3-4 messages avant la fin).
-  await Promise.all(data.map(async m=>{
-    await renderMsgReactions(m.id,'priv');
-    await renderMsgVu(m.id,'priv');
-    if(m.sender_id!==currentUser.id)trackMsgView(m.id,'priv');
-  }));
+  // Une seule requête groupée pour toutes les réactions + toutes les vues,
+  // au lieu d'une requête par message — ouverture rapide même sur de longues
+  // conversations, tout en évitant le décalage visuel du scroll après coup.
+  const msgIds=data.map(m=>m.id);
+  await Promise.all([
+    renderMsgReactionsBatch(msgIds,'priv'),
+    renderMsgVuBatch(msgIds,'priv')
+  ]);
+  data.forEach(m=>{if(m.sender_id!==currentUser.id)trackMsgView(m.id,'priv');});
   revealThreadAtBottom(el);
 }
 
@@ -8332,11 +8376,12 @@ async function loadPrivThreadDesk(onDataReceived){
       </div>
     </div>`;
   }).join('');
-  await Promise.all(data.map(async m=>{
-    await renderMsgReactions(m.id,'priv');
-    await renderMsgVu(m.id,'priv');
-    if(m.sender_id!==currentUser.id)trackMsgView(m.id,'priv');
-  }));
+  const msgIds=data.map(m=>m.id);
+  await Promise.all([
+    renderMsgReactionsBatch(msgIds,'priv'),
+    renderMsgVuBatch(msgIds,'priv')
+  ]);
+  data.forEach(m=>{if(m.sender_id!==currentUser.id)trackMsgView(m.id,'priv');});
   revealThreadAtBottom(el);
 }
 
