@@ -1,0 +1,25 @@
+# ============================================================
+# netlify.toml — configuration de déploiement de PILOT
+# ------------------------------------------------------------
+# Sans ce fichier, Netlify choisit lui-même une version de Node,
+# qui peut changer sans prévenir. Or `node --test` (le lanceur de
+# tests intégré, utilisé par `npm test`) exige Node >= 18.13.
+# Un build cassé par une mise à jour silencieuse de Node est
+# exactement le genre de panne qu'on ne diagnostique jamais.
+# ============================================================
+
+[build]
+  # `npm run build` lance d'abord `npm test`. Un test rouge arrête
+  # le déploiement : c'est volontaire. Rien de cassé ne part en prod.
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# PILOT est une application à page unique : toute URL doit servir
+# index.html, sinon un rafraîchissement sur une sous-page renvoie 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
